@@ -1,0 +1,23 @@
+{
+  "name": "creo-cleaner",
+  "version": "1.0.0",
+  "description": "Service for cleaning HTML5 ad creatives from forbidden click logic",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test tests/cleaner.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.24.0",
+    "@babel/traverse": "^7.24.0",
+    "adm-zip": "^0.5.10",
+    "cheerio": "^1.0.0-rc.12",
+    "express": "^4.19.2",
+    "multer": "^2.0.0"
+  },
+  "devDependencies": {}
+}
