@@ -16,10 +16,14 @@
 - Все inline-обработчики: `onclick`, `onmousedown`, `onmouseup`,
   `onpointerdown/up`, `ontouchstart/end` и пр. — со всех элементов.
 - `clicktag`, `data-clicktag` атрибуты.
-- В `<head>` инжектится правило
-  `html, body, body * { pointer-events: none !important; cursor: default !important; }`
-  чтобы DOM физически перестал реагировать на клики, даже если что-то
-  пропустил парсер.
+
+> Раньше cleaner также инжектил
+> `html, body, body * { pointer-events: none !important; ... }` как
+> страховку. Это убрано: на платформах которые сами оборачивают креос
+> click-overlay'ем (Adfox / MyTarget / DSPs), клик ожидает bubble или
+> прохождение сквозь DOM креатива, а `pointer-events:none` гасил его на
+> старте. Замена `<a>→<div>` + вычистка JS-API навигации достаточны для
+> "no internal click logic" без поломки внешнего click-tracker'а.
 
 ### JavaScript (через Babel AST, surgical edits — без минификации)
 - `addEventListener('click'|'mousedown'|...)` и аналогичные
@@ -86,9 +90,9 @@ curl -F "files=@creative1.zip" -F "files=@creative2.zip" http://localhost:3000/a
 npm test
 ```
 
-Покрывает: HTML-замену `<a>`, удаление inline-обработчиков, инжект
-`pointer-events:none`, AST-удаление click-API, end-to-end ZIP, защиту
-от zip-slip, обработку «архив без кликов».
+Покрывает: HTML-замену `<a>`, удаление inline-обработчиков, AST-удаление
+click-API, end-to-end ZIP, защиту от zip-slip, обработку «архив без
+кликов».
 
 ## Пример «было / стало»
 
@@ -120,10 +124,7 @@ npm test
 <html>
   <head>
     <style>.btn { }</style>
-  <style data-cleaner="pointer-events">
-/* injected by creo-cleaner */
-html, body, body * { pointer-events: none !important; cursor: default !important; }
-</style></head>
+  </head>
   <body>
     <div>
       <canvas id="canvas" width="300" height="250"></canvas>
@@ -139,7 +140,7 @@ html, body, body * { pointer-events: none !important; cursor: default !important
 
 Отчёт по этому кейсу:
 ```
-- index.html [html]: <a> -> <div>, onclick, href, target, pointer-events injected
+- index.html [html]: <a> -> <div>, onclick, href, target
 - index.html [html] inline-script: addEventListener("click"), *.getClickURLNum(), window.open, var clickTag = ...
 - index.html [html] inline-style: cursor: pointer removed
 ```
@@ -176,17 +177,17 @@ creo/
 | --- | --- |
 | Несколько HTML-файлов | Все обрабатываются. |
 | Вложенные обработчики (a > div onclick) | Снимаются и `<a>`, и handler на `<div>`. |
-| Логика в HTML и JS одновременно | Оба пути закрыты + страховка `pointer-events:none`. |
+| Логика в HTML и JS одновременно | Оба пути закрыты на уровне DOM и AST. |
 | Повреждённый JS | Файл оставляется как есть, в отчёт пишется warning. |
-| Архив без кликов | Возвращается с инжектом `pointer-events:none`; код не трогается. |
+| Архив без кликов | Возвращается без изменений. |
 | zip-slip (`../evil`) | Архив отклоняется с ошибкой. |
 
 ## Известные ограничения
 
 - Динамически собираемые URL/обработчики через `eval`, `new Function`,
   string-concat атрибутов — не ловятся (как и любым статическим анализом).
-  Здесь полагаемся на инжектированный `pointer-events: none` как страховку:
-  даже если код что-то навесит, DOM физически не среагирует.
+  Если креатив пытается обойти AST через runtime-склейку строк, такие
+  вызовы пройдут.
 - Если внешняя библиотека (CreateJS, GSAP) ловит клики через
   `stage.on('click', ...)` — мы это удалим (любой `.on('click', ...)`
   снимается). Если используется кастомный диспетчер событий с другим

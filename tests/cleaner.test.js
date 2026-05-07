@@ -56,10 +56,16 @@ test('htmlCleaner: preserves non-click on* handlers (onload, onresize, etc.)', (
   assert.match(code, /onmousemove/);
 });
 
-test('htmlCleaner: injects pointer-events:none rule', () => {
+test('htmlCleaner: does NOT inject pointer-events:none', () => {
+  // The cleaner used to inject `pointer-events:none !important` on the whole
+  // DOM as a paranoia guard. That broke creatives shown on platforms that
+  // wrap the creative with their own click layer (Adfox / MyTarget / DSPs):
+  // with no element accepting pointer events, the host's click handler
+  // never fired. The <a>→<div> + JS-API stripping is enough to kill
+  // internal click logic; we leave click bubbling to the host wrapper.
   const input = `<html><head></head><body><div>x</div></body></html>`;
   const { code } = cleanHtml(input);
-  assert.match(code, /pointer-events:\s*none/i);
+  assert.doesNotMatch(code, /pointer-events:\s*none/i);
 });
 
 test('htmlCleaner: cleans inline <script> blocks', () => {
@@ -197,7 +203,9 @@ test('cleanZip: end-to-end on a sample creative', async () => {
 
   assert.ok(out['index.html'].includes('<div'));
   assert.ok(!/<a\b/i.test(out['index.html']));
-  assert.ok(/pointer-events:\s*none/i.test(out['index.html']));
+  // Cleaner no longer injects pointer-events:none — see the dedicated
+  // htmlCleaner test for the rationale.
+  assert.ok(!/pointer-events:\s*none/i.test(out['index.html']));
 
   assert.ok(!/addEventListener/.test(out['banner.js']));
   assert.ok(!/window\.open/.test(out['banner.js']));
@@ -217,8 +225,6 @@ test('cleanZip: archive with no clicks returns equivalent content', async () => 
   });
   const { buffer, report } = await cleanZip(inputZip);
   const out = readZip(buffer);
-  // pointer-events rule is always added — that's an acceptable guarantee.
-  assert.ok(/pointer-events/.test(out['index.html']));
   // No JS edits should have been recorded.
   const jsChanges = report.changes.filter((c) => c.kind === 'js' && c.actions);
   assert.equal(jsChanges.length, 0);
@@ -240,7 +246,6 @@ test('cleanZip: recursively cleans nested ZIPs', async () => {
 
   assert.ok(!/<a\b/i.test(innerHtml), 'nested <a> should be removed');
   assert.ok(!/onclick/i.test(innerHtml), 'nested onclick should be removed');
-  assert.ok(/pointer-events:\s*none/i.test(innerHtml), 'nested HTML should get pointer-events injection');
   assert.equal(report.nestedZips >= 1, true);
   assert.ok(report.changes.some((c) => c.file.includes('inner/banner.zip!')),
     'changes should be prefixed with nested archive path');

@@ -153,28 +153,17 @@ function cleanHtml(source) {
     }
   });
 
-  // 5) Inject a global pointer-events:none rule. We append a <style> as the
-  //    last child of <head> so cascade order makes it authoritative; we use
-  //    !important so existing rules can't override it.
-  const $head = $('head');
-  const blockerCss = `\n/* injected by creo-cleaner */\nhtml, body, body * { pointer-events: none !important; cursor: default !important; }\n`;
-  if ($head.length) {
-    $head.append(`<style data-cleaner="pointer-events">${blockerCss}</style>`);
-  } else {
-    // Some creatives have no <head>; fall back to body or root prepend.
-    const $body = $('body');
-    if ($body.length) {
-      $body.prepend(`<style data-cleaner="pointer-events">${blockerCss}</style>`);
-    } else {
-      $.root().prepend(`<style data-cleaner="pointer-events">${blockerCss}</style>`);
-    }
-  }
-  log.push({
-    kind: 'pointer-events-injected',
-    reason: 'injected: pointer-events:none rule',
-    snippet: '',
-    replacement: blockerCss.trim(),
-  });
+  // The earlier version of the cleaner also injected a global
+  //   html, body, body * { pointer-events: none !important; ... }
+  // rule as a "belt-and-suspenders" guard. That breaks the legitimate flow
+  // where the host platform (Adfox / MyTarget / DSPs) wraps the creative
+  // with its own click-tracker layer and expects the click to bubble out
+  // of (or pass through) the creative DOM. With pointer-events:none on
+  // every element, no node ever becomes a click target, so the host
+  // wrapper never sees the event. Removing the inline `<a>` wrapper and
+  // killing window.open / location.href / addEventListener('click') in
+  // the JS is sufficient to satisfy "no internal click logic" without
+  // poisoning the platform's own click handling.
 
   return { code: $.html(), log };
 }
