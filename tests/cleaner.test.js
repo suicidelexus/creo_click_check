@@ -24,7 +24,7 @@ test('htmlCleaner: <a href> wrapping canvas becomes <div>', () => {
   assert.doesNotMatch(code, /<a\b/i);
   assert.doesNotMatch(code, /href=/i);
   assert.doesNotMatch(code, /onclick=/i);
-  assert.ok(log.some((l) => l.includes('<a> -> <div>')));
+  assert.ok(log.some((l) => (l.reason || '').includes('<a> -> <div>')));
 });
 
 test('htmlCleaner: strips inline event handlers from any tag', () => {

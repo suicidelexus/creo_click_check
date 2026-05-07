@@ -261,134 +261,167 @@
     const head = document.createElement('div');
     head.className = 'diff-head';
     head.innerHTML = `
-      <span class="diff-title">Было удалено</span>
+      <span class="diff-title">Что cleaner вырезал</span>
       <span class="diff-controls">
         <select class="diff-file"></select>
       </span>`;
     wrap.appendChild(head);
 
+    // Group actions from the report by the file they apply to. Files with no
+    // actions (binary assets, untouched JSON, etc.) are still listed so the
+    // user can confirm they were intentionally left alone.
+    const actionsByFile = new Map();
+    for (const change of (r.report && r.report.changes) || []) {
+      if (!actionsByFile.has(change.file)) actionsByFile.set(change.file, []);
+      const bucket = actionsByFile.get(change.file);
+      if (change.actions && change.actions.length) {
+        for (const a of change.actions) bucket.push({ ...normalizeAction(a), kindLabel: change.kind });
+      }
+      if (change.warning) bucket.push({ kind: 'warning', reason: change.warning, kindLabel: change.kind });
+      if (change.error) bucket.push({ kind: 'error', reason: change.error, kindLabel: change.kind });
+    }
+
     const select = head.querySelector('.diff-file');
-    const sorted = [...r.textFiles].sort((a, b) => {
-      if (a.modified !== b.modified) return a.modified ? -1 : 1;
+    const sorted = [...(r.textFiles || [])].sort((a, b) => {
+      const aMod = actionsByFile.has(a.path);
+      const bMod = actionsByFile.has(b.path);
+      if (aMod !== bMod) return aMod ? -1 : 1;
       return a.path.localeCompare(b.path);
     });
     for (const tf of sorted) {
       const opt = document.createElement('option');
       opt.value = tf.path;
-      opt.textContent = `${tf.modified ? '● ' : '  '}${tf.path}  (${tf.kind}, ${fmtSize(tf.bytes)})`;
+      const count = (actionsByFile.get(tf.path) || []).length;
+      const dot = count > 0 ? `● ${count} ` : '  ';
+      opt.textContent = `${dot}${tf.path}  (${tf.kind}, ${fmtSize(tf.bytes)})`;
       select.appendChild(opt);
     }
 
     const body = document.createElement('div');
     body.className = 'diff-body';
-    body.innerHTML = '<div class="diff-loading">Загрузка…</div>';
     wrap.appendChild(body);
 
-    const loadFile = async () => {
-      const tf = sorted.find((x) => x.path === select.value);
-      if (!tf) return;
-      body.innerHTML = '<div class="diff-loading">Загрузка…</div>';
-      try {
-        const [origText, cleanText] = await Promise.all([
-          fetch(tf.originalUrl).then((x) => x.text()),
-          fetch(tf.cleanedUrl).then((x) => x.text()),
-        ]);
-        body.innerHTML = '';
-        body.appendChild(renderRemovalsList(origText, cleanText));
-      } catch (e) {
-        body.innerHTML = `<div class="diff-loading">Ошибка: ${e.message}</div>`;
-      }
+    const renderForSelected = () => {
+      const path = select.value;
+      const actions = actionsByFile.get(path) || [];
+      body.innerHTML = '';
+      body.appendChild(renderActionList(actions));
     };
 
-    select.addEventListener('change', loadFile);
+    select.addEventListener('change', renderForSelected);
 
     li.appendChild(wrap);
-    loadFile();
+    renderForSelected();
   }
 
   /**
-   * Find lines that are present in the original but absent from the cleaned
-   * file — ignoring leading/trailing whitespace differences. This filters out
-   * the noise that cheerio's HTML serializer adds (re-indented whitespace
-   * lines look like "removals" in a strict line-diff but carry no semantic
-   * change).
+   * Older builds emitted plain strings as actions; newer builds emit
+   * { kind, reason, snippet, replacement }. Coerce both into the same shape so
+   * the renderer doesn't need to branch.
    */
-  function findTrueRemovals(originalText, cleanedText) {
-    const cleanedSet = new Set();
-    for (const line of cleanedText.split('\n')) {
-      const t = line.trim();
-      if (t) cleanedSet.add(t);
-    }
-    const removed = [];
-    const origLines = originalText.split('\n');
-    for (let i = 0; i < origLines.length; i++) {
-      const line = origLines[i];
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (!cleanedSet.has(trimmed)) {
-        removed.push({ lineNo: i + 1, content: line });
-      }
-    }
-    return removed;
+  function normalizeAction(a) {
+    if (typeof a === 'string') return { kind: 'legacy', reason: a, snippet: '', replacement: '' };
+    return {
+      kind: a.kind || 'edit',
+      reason: a.reason || '',
+      snippet: a.snippet || '',
+      replacement: a.replacement || '',
+      context: a.context,
+    };
   }
 
-  function renderRemovalsList(originalText, cleanedText) {
-    const removed = findTrueRemovals(originalText, cleanedText);
-
+  /**
+   * Render the list of actions the cleaner performed on a single file. Each
+   * action is shown as a card with the literal snippet that was removed —
+   * this avoids the visual noise that a line-diff produces when cheerio
+   * reserializes the HTML.
+   */
+  function renderActionList(actions) {
     const container = document.createElement('div');
     container.className = 'removals';
 
-    if (removed.length === 0) {
+    if (!actions.length) {
       const empty = document.createElement('div');
       empty.className = 'removals-empty';
-      empty.textContent = 'Ничего не удалено.';
+      empty.textContent = 'В этом файле cleaner ничего не трогал.';
       container.appendChild(empty);
       return container;
     }
 
     const stat = document.createElement('div');
     stat.className = 'removals-stat';
-    stat.textContent = `Удалено строк: ${removed.length}`;
+    stat.textContent = `Действий: ${actions.length}`;
     container.appendChild(stat);
 
-    // Group consecutive line numbers into blocks for readability.
-    const blocks = [];
-    let cur = null;
-    for (const r of removed) {
-      if (cur && r.lineNo === cur.end + 1) {
-        cur.lines.push(r);
-        cur.end = r.lineNo;
-      } else {
-        cur = { start: r.lineNo, end: r.lineNo, lines: [r] };
-        blocks.push(cur);
-      }
-    }
-
-    for (const block of blocks) {
-      const blk = document.createElement('div');
-      blk.className = 'removals-block';
-
-      const header = document.createElement('div');
-      header.className = 'removals-block-head';
-      header.textContent = block.start === block.end
-        ? `строка ${block.start}`
-        : `строки ${block.start}–${block.end}`;
-      blk.appendChild(header);
-
-      const pre = document.createElement('pre');
-      pre.className = 'removals-code';
-      for (const r of block.lines) {
-        const row = document.createElement('div');
-        row.className = 'removals-row';
-        row.innerHTML = '<span class="ln"></span><span class="src"></span>';
-        row.querySelector('.ln').textContent = String(r.lineNo);
-        row.querySelector('.src').textContent = r.content;
-        pre.appendChild(row);
-      }
-      blk.appendChild(pre);
-      container.appendChild(blk);
+    for (const a of actions) {
+      container.appendChild(renderActionCard(a));
     }
     return container;
+  }
+
+  const KIND_BADGES = {
+    'a-to-div': { label: 'replace', cls: 'badge-replace' },
+    'attr-removed': { label: 'attr', cls: 'badge-remove' },
+    'inline-script-edit': { label: 'js', cls: 'badge-remove' },
+    'inline-style-edit': { label: 'css', cls: 'badge-remove' },
+    'inline-script-parse-error': { label: 'parse', cls: 'badge-warn' },
+    'js-edit': { label: 'js', cls: 'badge-remove' },
+    'css-rule-removed': { label: 'css', cls: 'badge-remove' },
+    'pointer-events-injected': { label: 'inject', cls: 'badge-inject' },
+    'warning': { label: 'warn', cls: 'badge-warn' },
+    'error': { label: 'error', cls: 'badge-warn' },
+    'legacy': { label: 'edit', cls: 'badge-remove' },
+  };
+
+  function renderActionCard(a) {
+    const card = document.createElement('div');
+    card.className = 'action-card';
+
+    const head = document.createElement('div');
+    head.className = 'action-head';
+
+    const badgeMeta = KIND_BADGES[a.kind] || { label: a.kind || 'edit', cls: 'badge-remove' };
+    const badge = document.createElement('span');
+    badge.className = `action-badge ${badgeMeta.cls}`;
+    badge.textContent = badgeMeta.label;
+    head.appendChild(badge);
+
+    const title = document.createElement('span');
+    title.className = 'action-title';
+    title.textContent = a.reason || a.kind || 'edit';
+    head.appendChild(title);
+
+    card.appendChild(head);
+
+    if (a.snippet) {
+      const snippetWrap = document.createElement('div');
+      snippetWrap.className = 'action-snippet snippet-removed';
+      const lbl = document.createElement('span');
+      lbl.className = 'snippet-label';
+      lbl.textContent = '−';
+      const code = document.createElement('pre');
+      code.className = 'snippet-code';
+      code.textContent = a.snippet;
+      snippetWrap.appendChild(lbl);
+      snippetWrap.appendChild(code);
+      card.appendChild(snippetWrap);
+    }
+
+    if (a.replacement) {
+      const replWrap = document.createElement('div');
+      replWrap.className = 'action-snippet snippet-added';
+      const lbl = document.createElement('span');
+      lbl.className = 'snippet-label';
+      lbl.textContent = '+';
+      const code = document.createElement('pre');
+      code.className = 'snippet-code';
+      code.textContent = a.replacement;
+      replWrap.appendChild(lbl);
+      replWrap.appendChild(code);
+      card.appendChild(replWrap);
+    }
+
+    return card;
   }
 
   function buildReportNode(report) {

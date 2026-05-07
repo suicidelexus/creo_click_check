@@ -196,9 +196,17 @@ function cleanJs(source, opts = {}) {
   let result = source;
   const log = [];
   for (const edit of kept) {
+    log.push({
+      kind: 'js-edit',
+      reason: edit.reason,
+      snippet: source.slice(edit.start, edit.end),
+      replacement: edit.replacement || '',
+    });
     result = result.slice(0, edit.start) + edit.replacement + result.slice(edit.end);
-    log.push(edit.reason);
   }
+  // Apply order is end→start, but the user reads the log top→bottom; flip it
+  // back to source order so removals appear in the order they appear in code.
+  log.reverse();
 
   return { code: result, removed: log };
 }

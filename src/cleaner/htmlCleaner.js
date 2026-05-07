@@ -36,22 +36,41 @@ function cleanHtml(source) {
   $('a').each((_, el) => {
     const $el = $(el);
     const $newEl = $('<div></div>');
+    const originalOpenTag = serializeOpenTag('a', el.attribs || {});
 
     for (const [attr, value] of Object.entries(el.attribs || {})) {
       const lower = attr.toLowerCase();
       if (NAV_ATTRS.has(lower)) {
-        log.push(`<a> attr removed: ${attr}`);
+        log.push({
+          kind: 'attr-removed',
+          reason: `<a> attr removed: ${attr}`,
+          snippet: formatAttr(attr, value),
+          replacement: '',
+          context: { tag: 'a', attr },
+        });
         continue;
       }
       if (CLICK_HANDLER_ATTR_RE.test(lower)) {
-        log.push(`<a> handler removed: ${attr}`);
+        log.push({
+          kind: 'attr-removed',
+          reason: `<a> handler removed: ${attr}`,
+          snippet: formatAttr(attr, value),
+          replacement: '',
+          context: { tag: 'a', attr },
+        });
         continue;
       }
       $newEl.attr(attr, value);
     }
+    const newOpenTag = serializeOpenTag('div', $newEl.get(0).attribs || {});
     $newEl.append($el.contents());
     $el.replaceWith($newEl);
-    log.push('<a> -> <div>');
+    log.push({
+      kind: 'a-to-div',
+      reason: '<a> -> <div>',
+      snippet: originalOpenTag,
+      replacement: newOpenTag,
+    });
   });
 
   // 2) Strip click-related inline handlers and click-tag attrs from every
@@ -62,14 +81,27 @@ function cleanHtml(source) {
     if (!el.attribs) return;
     for (const key of Object.keys(el.attribs)) {
       const lower = key.toLowerCase();
+      const value = el.attribs[key];
       if (CLICK_HANDLER_ATTR_RE.test(lower)) {
         delete el.attribs[key];
-        log.push(`attr removed: ${key} on <${el.tagName}>`);
+        log.push({
+          kind: 'attr-removed',
+          reason: `attr removed: ${key} on <${el.tagName}>`,
+          snippet: formatAttr(key, value),
+          replacement: '',
+          context: { tag: el.tagName, attr: key },
+        });
         continue;
       }
       if (lower === 'clicktag' || lower === 'data-clicktag' || /^data-click(url|tag)/.test(lower)) {
         delete el.attribs[key];
-        log.push(`attr removed: ${key} on <${el.tagName}>`);
+        log.push({
+          kind: 'attr-removed',
+          reason: `attr removed: ${key} on <${el.tagName}>`,
+          snippet: formatAttr(key, value),
+          replacement: '',
+          context: { tag: el.tagName, attr: key },
+        });
       }
     }
   });
@@ -86,10 +118,20 @@ function cleanHtml(source) {
       $script.empty();
       // append a text node directly via the underlying DOM
       el.children = [{ type: 'text', data: result.code, parent: el }];
-      result.removed.forEach((r) => log.push(`inline-script: ${r}`));
+      result.removed.forEach((r) => log.push({
+        kind: 'inline-script-edit',
+        reason: `inline-script: ${r.reason}`,
+        snippet: r.snippet,
+        replacement: r.replacement,
+      }));
     }
     if (result.parseError) {
-      log.push(`inline-script: parse error (left untouched): ${result.parseError}`);
+      log.push({
+        kind: 'inline-script-parse-error',
+        reason: `inline-script: parse error (left untouched): ${result.parseError}`,
+        snippet: '',
+        replacement: '',
+      });
     }
   });
 
@@ -102,7 +144,12 @@ function cleanHtml(source) {
     if (result.code !== css) {
       $style.empty();
       el.children = [{ type: 'text', data: result.code, parent: el }];
-      result.removed.forEach((r) => log.push(`inline-style: ${r}`));
+      result.removed.forEach((r) => log.push({
+        kind: 'inline-style-edit',
+        reason: `inline-style: ${r.reason}`,
+        snippet: r.snippet,
+        replacement: r.replacement,
+      }));
     }
   });
 
@@ -122,9 +169,29 @@ function cleanHtml(source) {
       $.root().prepend(`<style data-cleaner="pointer-events">${blockerCss}</style>`);
     }
   }
-  log.push('injected: pointer-events:none rule');
+  log.push({
+    kind: 'pointer-events-injected',
+    reason: 'injected: pointer-events:none rule',
+    snippet: '',
+    replacement: blockerCss.trim(),
+  });
 
   return { code: $.html(), log };
+}
+
+function formatAttr(name, value) {
+  if (value == null || value === '') return name;
+  // Use double-quotes; collapse any embedded ones for display purposes.
+  const safe = String(value).replace(/"/g, '\\"');
+  return `${name}="${safe}"`;
+}
+
+function serializeOpenTag(tagName, attribs) {
+  const parts = [tagName];
+  for (const [k, v] of Object.entries(attribs || {})) {
+    parts.push(formatAttr(k, v));
+  }
+  return `<${parts.join(' ')}>`;
 }
 
 module.exports = { cleanHtml };

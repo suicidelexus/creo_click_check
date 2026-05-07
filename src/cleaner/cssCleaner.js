@@ -16,7 +16,12 @@ function cleanCss(source) {
   const result = source.replace(
     /cursor\s*:\s*pointer\s*(?:!important\s*)?(;|(?=\s*\}))/gi,
     (match) => {
-      log.push(`removed: ${match.trim()}`);
+      log.push({
+        kind: 'css-rule-removed',
+        reason: `removed: ${match.trim()}`,
+        snippet: match.trim(),
+        replacement: '',
+      });
       // If the match ended with ';' we drop the whole thing; otherwise we
       // need to leave nothing so the closing brace stays valid.
       return match.endsWith(';') ? '' : '';
