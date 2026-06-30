@@ -155,3 +155,10 @@ body::after {
 .row-main { display: flex; flex-direction: column; min-width: 0; }
 .row-name { font-weight: 600; font-size: 13.5px; word-break: break-all; }
 .row-meta { font-size: 12px; color: var(--muted); }
+
+.sk { display: block; border-radius: 6px;
+  background: linear-gradient(90deg, #eef0f5 25%, #f7f8fb 37%, #eef0f5 63%);
+  background-size: 400% 100%; animation: sk 1.2s ease-in-out infinite; }
+.sk-line { height: 10px; width: 70%; margin-top: 6px; }
+@keyframes sk { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+.row-item.is-err .row-meta { color: var(--danger); }
