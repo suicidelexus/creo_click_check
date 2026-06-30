@@ -3,41 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ClickTag remover — Очистка HTML5-креативов</title>
+  <title>ClickTag Cleaner — очистка HTML5-креативов под требования DSP</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main>
-    <header>
-      <h1>ClickTag remover</h1>
-      <p class="subtitle">Удаление кликовой логики из HTML5-креативов для самых маленьких</p>
-    </header>
+  <!-- Inline SVG sprite: all icons referenced via <use href="#ic-..."> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ic-logo" viewBox="0 0 24 24"><path fill="currentColor" d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></symbol>
+    <symbol id="ic-drop" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/></symbol>
+    <symbol id="ic-download" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 18v1a1 1 0 001 1h14a1 1 0 001-1v-1"/></symbol>
+    <symbol id="ic-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5L20 18M8 16.5L20 6"/></g></symbol>
+    <symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></symbol>
+    <symbol id="ic-alert" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></symbol>
+    <symbol id="ic-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+  </svg>
 
-    <section class="dropzone" id="dropzone">
-      <p class="dz-text">Перетащите ZIP-архивы сюда или нажмите, чтобы выбрать.</p>
-      <p class="dz-hint">Можно загружать несколько архивов одновременно. Лимит — 50 МБ на архив.</p>
-      <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed" multiple hidden>
-    </section>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="ic"><use href="#ic-logo"/></svg></span>
+      <span class="brand-text">
+        <span class="brand-name">ClickTag Cleaner</span>
+        <span class="brand-sub">Чистим HTML5-креативы под требования программатик-DSP (Hybrid): убираем переходы по клику на баннер</span>
+      </span>
+    </div>
+    <div class="summary" id="summaryChips" hidden></div>
+  </header>
 
-    <button class="primary" id="processBtn" disabled>Обработать архивы</button>
+  <main class="workspace">
+    <!-- LEFT -->
+    <aside class="col-left">
+      <section class="dropzone" id="dropzone">
+        <svg class="ic ic-lg"><use href="#ic-drop"/></svg>
+        <p class="dz-text">Перетащите ZIP-архивы сюда<br>или нажмите, чтобы выбрать</p>
+        <p class="dz-hint">Несколько архивов сразу · до 50 МБ каждый</p>
+        <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed" multiple hidden>
+      </section>
 
-    <section class="queue" id="queue" hidden>
-      <h2>Очередь</h2>
-      <ul id="queueList"></ul>
-    </section>
+      <button class="btn btn-primary btn-block" id="processBtn" disabled>Обработать</button>
 
-    <section class="results" id="results" hidden>
-      <div class="results-header">
-        <h2>Результаты</h2>
-        <a class="ghost" id="downloadAll" href="#" hidden>Скачать всё одним архивом</a>
+      <div class="creative-list" id="creativeList">
+        <ul id="queueList"></ul>
       </div>
-      <ul id="resultList"></ul>
-    </section>
 
-    <footer>
-      <p>Архивы хранятся в памяти и удаляются через 30 минут после загрузки.</p>
-    </footer>
+      <a class="btn btn-ghost btn-block downloadall" id="downloadAll" href="#" hidden>
+        <svg class="ic"><use href="#ic-download"/></svg> Скачать всё одним архивом
+      </a>
+    </aside>
+
+    <!-- RIGHT -->
+    <section class="col-right">
+      <div class="detail" id="detailPane">
+        <div class="empty-state">
+          <svg class="ic ic-xl"><use href="#ic-scissors"/></svg>
+          <p class="empty-title">Здесь появится разбор креатива</p>
+          <p class="empty-hint">Закиньте архивы слева и нажмите «Обработать», затем выберите креатив из списка.</p>
+        </div>
+      </div>
+    </section>
   </main>
+  <footer class="foot">Архивы хранятся в памяти и удаляются через 30 минут после загрузки.</footer>
+
   <script src="/app.js"></script>
 </body>
 </html>
