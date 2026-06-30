@@ -173,16 +173,176 @@
 
   processBtn.addEventListener('click', processBatch);
 
-  // Temporary stub — replaced by full detail renderer in Task 4.
+  const KIND_BADGES = {
+    'a-to-div': { label: 'replace', cls: 'b-replace' },
+    'attr-removed': { label: 'attr', cls: 'b-remove' },
+    'inline-script-edit': { label: 'js', cls: 'b-remove' },
+    'inline-style-edit': { label: 'css', cls: 'b-remove' },
+    'inline-script-parse-error': { label: 'parse', cls: 'b-warn' },
+    'js-edit': { label: 'js', cls: 'b-remove' },
+    'css-rule-removed': { label: 'css', cls: 'b-remove' },
+    'warning': { label: 'warn', cls: 'b-warn' },
+    'error': { label: 'error', cls: 'b-warn' },
+    'legacy': { label: 'edit', cls: 'b-remove' },
+  };
+
+  function normalizeAction(a) {
+    if (typeof a === 'string') return { kind: 'legacy', reason: a, snippet: '', replacement: '' };
+    return {
+      kind: a.kind || 'edit',
+      reason: a.reason || '',
+      snippet: a.snippet || '',
+      replacement: a.replacement || '',
+    };
+  }
+
+  function actionsByFileMap(r) {
+    const map = new Map();
+    for (const change of (r.report && r.report.changes) || []) {
+      if (!map.has(change.file)) map.set(change.file, []);
+      const bucket = map.get(change.file);
+      for (const a of (change.actions || [])) bucket.push(normalizeAction(a));
+      if (change.warning) bucket.push({ kind: 'warning', reason: change.warning, snippet: '', replacement: '' });
+      if (change.error) bucket.push({ kind: 'error', reason: change.error, snippet: '', replacement: '' });
+    }
+    return map;
+  }
+
+  function actionCard(a) {
+    const card = document.createElement('div');
+    card.className = 'act-card';
+    const meta = KIND_BADGES[a.kind] || { label: a.kind || 'edit', cls: 'b-remove' };
+    const head = document.createElement('div');
+    head.className = 'act-head';
+    head.innerHTML = `<span class="badge ${meta.cls}"></span><span class="act-title"></span>`;
+    head.querySelector('.badge').textContent = meta.label;
+    head.querySelector('.act-title').textContent = a.reason || a.kind || 'edit';
+    card.appendChild(head);
+    if (a.snippet) {
+      const row = document.createElement('div'); row.className = 'snip snip-rm';
+      const code = document.createElement('pre'); code.className = 'snip-code'; code.textContent = a.snippet;
+      row.innerHTML = '<span class="snip-sign">−</span>'; row.appendChild(code);
+      card.appendChild(row);
+    }
+    if (a.replacement) {
+      const row = document.createElement('div'); row.className = 'snip snip-add';
+      const code = document.createElement('pre'); code.className = 'snip-code'; code.textContent = a.replacement;
+      row.innerHTML = '<span class="snip-sign">+</span>'; row.appendChild(code);
+      card.appendChild(row);
+    }
+    return card;
+  }
+
+  function buildColumn(label, url, w, h) {
+    const col = document.createElement('div'); col.className = 'pv-col';
+    const cap = document.createElement('div'); cap.className = 'pv-cap';
+    cap.innerHTML = '<span class="pv-label"></span><a class="pv-open" target="_blank" rel="noopener">в новой вкладке</a>';
+    cap.querySelector('.pv-label').textContent = label;
+    cap.querySelector('.pv-open').href = url;
+    col.appendChild(cap);
+    const stage = document.createElement('div'); stage.className = 'pv-stage';
+    stage.style.width = w + 'px'; stage.style.height = h + 'px';
+    const iframe = document.createElement('iframe');
+    iframe.src = url; iframe.width = w; iframe.height = h;
+    iframe.setAttribute('sandbox', 'allow-scripts'); iframe.setAttribute('loading', 'lazy');
+    stage.appendChild(iframe); col.appendChild(stage);
+    return { col, reload: () => { iframe.src = url + '?t=' + Date.now(); } };
+  }
+
+  function renderDetail() {
+    const r = results.find((x) => x.id === selectedId);
+    detailPane.innerHTML = '';
+    if (!r) {
+      detailPane.innerHTML = `
+        <div class="empty-state">
+          <svg class="ic ic-xl"><use href="#ic-scissors"/></svg>
+          <p class="empty-title">Здесь появится разбор креатива</p>
+          <p class="empty-hint">Выберите креатив из списка слева.</p>
+        </div>`;
+      return;
+    }
+    if (r.error) {
+      detailPane.innerHTML = `
+        <div class="empty-state">
+          <svg class="ic ic-xl" style="color:var(--danger)"><use href="#ic-alert"/></svg>
+          <p class="empty-title"></p>
+          <p class="empty-hint"></p>
+        </div>`;
+      detailPane.querySelector('.empty-title').textContent = r.originalName;
+      detailPane.querySelector('.empty-hint').textContent = r.error;
+      return;
+    }
+
+    // header row: name + download
+    const head = document.createElement('div'); head.className = 'detail-head';
+    head.innerHTML = `<div class="detail-title"></div>
+      <a class="btn btn-primary" download><svg class="ic"><use href="#ic-download"/></svg> Скачать</a>`;
+    head.querySelector('.detail-title').textContent = r.originalName;
+    const dl = head.querySelector('a.btn'); dl.href = r.downloadUrl; dl.setAttribute('download', r.cleanedName);
+    detailPane.appendChild(head);
+
+    // preview
+    if (r.previewUrl) {
+      const w = (r.adSize && r.adSize.width) || 320;
+      const h = (r.adSize && r.adSize.height) || 480;
+      const block = document.createElement('section'); block.className = 'pv-block';
+      const cap = document.createElement('div'); cap.className = 'block-cap';
+      cap.innerHTML = `<span><svg class="ic"><use href="#ic-eye"/></svg> Превью</span><span class="block-sub"></span>`;
+      cap.querySelector('.block-sub').textContent = `${w} × ${h}`;
+      block.appendChild(cap);
+      const grid = document.createElement('div'); grid.className = 'pv-grid';
+      grid.appendChild(buildColumn('Оригинал', r.originalPreviewUrl, w, h).col);
+      grid.appendChild(buildColumn('После очистки', r.previewUrl, w, h).col);
+      block.appendChild(grid);
+      detailPane.appendChild(block);
+    }
+
+    // diff
+    const diff = document.createElement('section'); diff.className = 'diff-block';
+    const dcap = document.createElement('div'); dcap.className = 'block-cap';
+    dcap.innerHTML = `<span><svg class="ic"><use href="#ic-scissors"/></svg> Что вырезано</span>`;
+    diff.appendChild(dcap);
+
+    const map = actionsByFileMap(r);
+    const files = [...(r.textFiles || [])].sort((a, b) => {
+      const am = map.has(a.path), bm = map.has(b.path);
+      if (am !== bm) return am ? -1 : 1;
+      return a.path.localeCompare(b.path);
+    });
+
+    const select = document.createElement('select'); select.className = 'diff-file';
+    for (const tf of files) {
+      const opt = document.createElement('option'); opt.value = tf.path;
+      const count = (map.get(tf.path) || []).length;
+      opt.textContent = `${count > 0 ? '● ' + count + ' ' : '  '}${tf.path} (${tf.kind}, ${fmtSize(tf.bytes)})`;
+      select.appendChild(opt);
+    }
+    if (files.length > 1) diff.appendChild(select);
+
+    const body = document.createElement('div'); body.className = 'diff-body';
+    diff.appendChild(body);
+
+    const renderFor = () => {
+      const path = select.value || (files[0] && files[0].path);
+      const acts = map.get(path) || [];
+      body.innerHTML = '';
+      if (!acts.length) {
+        const e = document.createElement('p'); e.className = 'diff-empty';
+        e.textContent = 'В этом файле ничего не вырезано.'; body.appendChild(e); return;
+      }
+      const stat = document.createElement('p'); stat.className = 'diff-stat';
+      stat.textContent = `Действий: ${acts.length}`; body.appendChild(stat);
+      for (const a of acts) body.appendChild(actionCard(a));
+    };
+    select.addEventListener('change', renderFor);
+    detailPane.appendChild(diff);
+    renderFor();
+  }
+
   function selectResult(id) {
     selectedId = id;
     renderList();
-    const r = results.find((x) => x.id === id);
-    detailPane.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.style.whiteSpace = 'pre-wrap';
-    pre.textContent = r ? JSON.stringify({ name: r.originalName, error: r.error || null }, null, 2) : 'нет данных';
-    detailPane.appendChild(pre);
+    renderDetail();
   }
 
   renderList();
