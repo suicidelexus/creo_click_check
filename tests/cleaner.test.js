@@ -277,3 +277,20 @@ test('zipHandler: isUnsafePath flags traversal & absolute paths', () => {
   assert.equal(isUnsafePath('index.html'), false);
   assert.equal(isUnsafePath('assets/img/logo.png'), false);
 });
+
+test('htmlCleaner: strips bare data-click attr (targetads viewability redirect)', () => {
+  // Adobe Animate creatives from targetads carry a viewability.js <script> whose
+  // `data-click` attribute makes the banner clickable (the lib reads it and wires
+  // a redirect). Bare `data-click` (no url/tag suffix) previously slipped through,
+  // so the DSP rejected creatives the cleaner reported as clean. `data-pixel`
+  // (impression only) must be preserved.
+  const input =
+    `<script type="text/javascript" ` +
+    `data-pixel="https://eye.targetads.io/view/pixel?pid=1&pl=2" ` +
+    `data-click="https://eye.targetads.io/view/click?pid=1&pl=2&erir={erid}" ` +
+    `src="https://cdn.targetads.io/viewability/v1/viewability.js"></script>`;
+  const { code, log } = cleanHtml(input);
+  assert.doesNotMatch(code, /data-click=/i);
+  assert.match(code, /data-pixel=/i);
+  assert.ok(log.some((l) => /data-click/i.test(l.snippet || '') || /data-click/i.test(l.reason || '')));
+});
