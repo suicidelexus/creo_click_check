@@ -93,7 +93,11 @@ function cleanHtml(source) {
         });
         continue;
       }
-      if (lower === 'clicktag' || lower === 'data-clicktag' || /^data-click(url|tag)/.test(lower)) {
+      // Any `data-click*` attribute is a click hook: `data-clicktag`,
+      // `data-clickurl`, and the bare `data-click` that targetads' viewability.js
+      // reads to wire a redirect on the banner. Strip them all (impression-only
+      // `data-pixel` is left intact).
+      if (lower === 'clicktag' || /^data-click/.test(lower)) {
         delete el.attribs[key];
         log.push({
           kind: 'attr-removed',
