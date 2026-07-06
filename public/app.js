@@ -28,10 +28,18 @@
       <span class="row-main">
         <span class="row-name"></span>
         <span class="row-meta"></span>
-      </span>`;
+      </span>
+      <button class="row-x" type="button" title="Убрать из очереди" aria-label="Убрать из очереди"><svg class="ic"><use href="#ic-x"/></svg></button>`;
     li.querySelector('.row-name').textContent = f.name;
     li.querySelector('.row-meta').textContent = fmtSize(f.size);
+    li.querySelector('.row-x').addEventListener('click', (e) => { e.stopPropagation(); removeQueued(f); });
     return li;
+  }
+
+  // Drop a not-yet-processed file from the queue.
+  function removeQueued(f) {
+    queued = queued.filter((x) => x !== f);
+    renderList();
   }
 
   // Pending-only version. REPLACED by the unified renderer in Task 3.
@@ -96,13 +104,42 @@
       <span class="row-main">
         <span class="row-name"></span>
         <span class="row-meta"></span>
-      </span>`;
+      </span>
+      <button class="row-x" type="button" title="Убрать из сервиса" aria-label="Убрать из сервиса"><svg class="ic"><use href="#ic-x"/></svg></button>`;
     li.querySelector('.row-name').textContent = r.originalName;
     li.querySelector('.row-meta').textContent = isErr
       ? 'ошибка'
       : `${fmtSize(r.bytesIn)} → ${fmtSize(r.bytesOut)}`;
     li.addEventListener('click', () => selectResult(r.id));
+    li.querySelector('.row-x').addEventListener('click', (e) => { e.stopPropagation(); removeResult(r.id); });
     return li;
+  }
+
+  // Drop a processed creative from the session: recompute the summary, keep a
+  // sensible selection, and hide download-all if nothing downloadable remains.
+  function removeResult(id) {
+    const idx = results.findIndex((r) => r.id === id);
+    if (idx === -1) return;
+    const wasSelected = selectedId === id;
+    results.splice(idx, 1);
+
+    batchSummary = results.length
+      ? {
+          creatives: results.filter((r) => !r.error).length,
+          clicksRemoved: results.reduce((n, r) => n + countClicksRemoved(r), 0),
+        }
+      : null;
+
+    if (!results.some((r) => !r.error)) downloadAll.hidden = true;
+
+    if (wasSelected) {
+      const next = results.find((r) => !r.error) || results[0] || null;
+      selectedId = next ? next.id : null;
+    }
+
+    renderList();
+    renderSummary();
+    renderDetail();
   }
 
   // Unified renderer: processed results first, then pending queued files.
