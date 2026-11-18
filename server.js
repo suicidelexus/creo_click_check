@@ -9,6 +9,8 @@ const { cleanZip } = require('./src/cleaner');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// HOST lets the internal copy bind to localhost behind nginx; unset = all interfaces (Render).
+const HOST = process.env.HOST;
 
 // In-memory upload storage. ZIPs are processed and held briefly for
 // download; nothing is persisted to disk.
@@ -249,6 +251,6 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Unknown error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`creo-cleaner listening on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`creo-cleaner listening on http://${HOST || 'localhost'}:${PORT}`);
 });

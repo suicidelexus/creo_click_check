@@ -1,0 +1,19 @@
+# /etc/systemd/system/creo-click-check.service
+[Unit]
+Description=ClickTag Cleaner (internal copy, behind nginx :8091)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=creo
+Group=creo
+WorkingDirectory=/opt/creo-click-check/app
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3091
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
